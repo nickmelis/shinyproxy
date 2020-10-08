@@ -44,43 +44,48 @@ public class AppController extends BaseController {
 
 	@Inject
 	private ProxyMappingManager mappingManager;
-	
+
 	@RequestMapping(value="/app/*", method=RequestMethod.GET)
 	public String app(ModelMap map, HttpServletRequest request) {
 		prepareMap(map, request);
-		
+
 		Proxy proxy = findUserProxy(request);
 		awaitReady(proxy);
 
+    map.put("appId", getAppName(request));
 		map.put("appTitle", getAppTitle(request));
 		map.put("container", (proxy == null) ? "" : buildContainerPath(request));
-		
+
+    // Sidenav
+    ProxySpec[] apps = proxyService.getProxySpecs(null, false).toArray(new ProxySpec[0]);
+    map.put("apps", apps);
+
 		return "app";
 	}
-	
+
 	@RequestMapping(value="/app/*", method=RequestMethod.POST)
 	@ResponseBody
 	public Map<String,String> startApp(HttpServletRequest request) {
 		Proxy proxy = getOrStart(request);
 		String containerPath = buildContainerPath(request);
-		
+
 		Map<String,String> response = new HashMap<>();
 		response.put("containerPath", containerPath);
 		response.put("proxyId", proxy.getId());
 		return response;
 	}
-	
+
 	@RequestMapping(value="/app_direct/**")
 	public void appDirect(HttpServletRequest request, HttpServletResponse response) {
 		Proxy proxy = getOrStart(request);
 		awaitReady(proxy);
-		
+
 		String mapping = getProxyEndpoint(proxy);
-		
+
 		String subPath = request.getRequestURI();
 		subPath = subPath.substring(subPath.indexOf("/app_direct/") + 12);
 		subPath = subPath.substring(getAppName(request).length());
-		
+
 		if (subPath.trim().isEmpty()) {
 			try {
 				response.sendRedirect(request.getRequestURI() + "/");
@@ -89,14 +94,14 @@ public class AppController extends BaseController {
 			}
 			return;
 		}
-		
+
 		try {
 			mappingManager.dispatchAsync(mapping + subPath, request, response);
 		} catch (Exception e) {
 			throw new RuntimeException("Error routing proxy request", e);
 		}
 	}
-	
+
 	private Proxy getOrStart(HttpServletRequest request) {
 		Proxy proxy = findUserProxy(request);
 		if (proxy == null) {
@@ -108,27 +113,27 @@ public class AppController extends BaseController {
 		}
 		return proxy;
 	}
-	
+
 	private boolean awaitReady(Proxy proxy) {
 		if (proxy == null) return false;
 		if (proxy.getStatus() == ProxyStatus.Up) return true;
 		if (proxy.getStatus() == ProxyStatus.Stopping || proxy.getStatus() == ProxyStatus.Stopped) return false;
-		
+
 		int totalWaitMs = Integer.parseInt(environment.getProperty("proxy.container-wait-time", "20000"));
 		int waitMs = Math.min(500, totalWaitMs);
 		int maxTries = totalWaitMs / waitMs;
 		Retrying.retry(i -> proxy.getStatus() != ProxyStatus.Starting, maxTries, waitMs);
-		
+
 		return (proxy.getStatus() == ProxyStatus.Up);
 	}
-	
+
 	private String buildContainerPath(HttpServletRequest request) {
 		String appName = getAppName(request);
 		if (appName == null) return "";
-		
+
 		String queryString = request.getQueryString();
 		queryString = (queryString == null) ? "" : "?" + queryString;
-		
+
 		String containerPath = getContextPath() + "app_direct/" + appName + "/" + queryString;
 		return containerPath;
 	}

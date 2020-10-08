@@ -1,4 +1,11 @@
 /target/
 /shinyproxy.log
 /application.yml
-/.project
+/build/
+/.settings/
+.project
+.classpath
+*.log
+/bin/
+.DS_Store
+.idea/
